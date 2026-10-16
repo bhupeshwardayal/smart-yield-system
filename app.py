@@ -79,19 +79,20 @@ def load_all_models():
                 print(f"[startup] WARNING: missing encoders for {safe_name}, skipping.")
                 continue
 
-            model = joblib.load(model_path)
-            bundle = joblib.load(encoders_path)
-            # Convert the safe filename back to a readable crop name for lookups
-            # (train_models.py replaces "(" ")" " " when saving, so we keep a
-            # display-name mapping using underscores -> spaces as a best effort)
-            display_name = safe_name.replace("_", " ")
-            registry[display_name] = {
-                "model": model,
-                "encoders": bundle["encoders"],
-                "feature_cols": bundle["feature_cols"],
-                "safe_name": safe_name,
-            }
-            print(f"[startup] Loaded model for crop: {display_name}")
+            try:
+                model = joblib.load(model_path)
+                bundle = joblib.load(encoders_path)
+                display_name = safe_name.replace("_", " ")
+                registry[display_name] = {
+                    "model": model,
+                    "encoders": bundle["encoders"],
+                    "feature_cols": bundle["feature_cols"],
+                    "safe_name": safe_name,
+                }
+                print(f"[startup] Loaded model for crop: {display_name}")
+            except Exception as e:
+                print(f"[startup] WARNING: Error loading model for {safe_name}: {e}")
+                continue
 
     return registry
 
@@ -109,14 +110,18 @@ def load_all_price_models():
             safe_name = fname.replace("_price_model.joblib", "")
             model_path = os.path.join(MODEL_DIR, fname)
             meta_path = os.path.join(MODEL_DIR, f"{safe_name}_price_meta.joblib")
-            model = joblib.load(model_path)
-            meta = joblib.load(meta_path) if os.path.exists(meta_path) else {}
-            display_name = safe_name.replace("_", " ")
-            registry[display_name] = {
-                "model": model,
-                "meta": meta
-            }
-            print(f"[startup] Loaded price model for crop: {display_name}")
+            try:
+                model = joblib.load(model_path)
+                meta = joblib.load(meta_path) if os.path.exists(meta_path) else {}
+                display_name = safe_name.replace("_", " ")
+                registry[display_name] = {
+                    "model": model,
+                    "meta": meta
+                }
+                print(f"[startup] Loaded price model for crop: {display_name}")
+            except Exception as e:
+                print(f"[startup] WARNING: Error loading price model for {safe_name}: {e}")
+                continue
     return registry
 
 
