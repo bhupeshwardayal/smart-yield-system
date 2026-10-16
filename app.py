@@ -55,91 +55,175 @@ def handle_exception(e):
 
 
 
+import gc
+
 # ============================================================
-# Load all trained per-crop models + encoders into memory at startup
+# Lazy Loading Model Registries (Keeps RAM under 100MB on Render)
 # ============================================================
-def load_all_models():
-    """
-    Scans the models/ folder for *_model.joblib files and loads the
-    matching *_encoders.joblib alongside each one. Returns a dict:
-        { "Wheat": {"model": ..., "encoders": ..., "feature_cols": [...]}, ... }
-    """
-    registry = {}
-    if not os.path.isdir(MODEL_DIR):
-        print(f"[startup] WARNING: '{MODEL_DIR}/' folder not found. "
-              f"Run train_models.py first.")
-        return registry
+class LazyModelRegistry(dict):
+    def __init__(self, model_dir):
+        super().__init__()
+        self.model_dir = model_dir
+        self._meta = {}
+        self._cache = {}
+        if os.path.isdir(model_dir):
+            for fname in os.listdir(model_dir):
+                if fname.endswith("_model.joblib"):
+                    safe_name = fname.replace("_model.joblib", "")
+                    model_path = os.path.join(model_dir, fname)
+                    encoders_path = os.path.join(model_dir, f"{safe_name}_encoders.joblib")
+                    if os.path.exists(encoders_path):
+                        display_name = safe_name.replace("_", " ")
+                        self._meta[display_name] = (model_path, encoders_path, safe_name)
 
-    for fname in os.listdir(MODEL_DIR):
-        if fname.endswith("_model.joblib"):
-            safe_name = fname.replace("_model.joblib", "")
-            model_path = os.path.join(MODEL_DIR, fname)
-            encoders_path = os.path.join(MODEL_DIR, f"{safe_name}_encoders.joblib")
-            if not os.path.exists(encoders_path):
-                print(f"[startup] WARNING: missing encoders for {safe_name}, skipping.")
-                continue
+    def keys(self):
+        return self._meta.keys()
 
-            try:
-                model = joblib.load(model_path)
-                bundle = joblib.load(encoders_path)
-                display_name = safe_name.replace("_", " ")
-                registry[display_name] = {
-                    "model": model,
-                    "encoders": bundle["encoders"],
-                    "feature_cols": bundle["feature_cols"],
-                    "safe_name": safe_name,
-                }
-                print(f"[startup] Loaded model for crop: {display_name}")
-            except Exception as e:
-                print(f"[startup] WARNING: Error loading model for {safe_name}: {e}")
-                continue
+    def __iter__(self):
+        return iter(self._meta)
 
-    return registry
+    def __len__(self):
+        return len(self._meta)
 
+    def __contains__(self, key):
+        return key in self._meta
 
-MODEL_REGISTRY = load_all_models()
+    def get(self, key, default=None):
+        if key in self._meta:
+            return self[key]
+        return default
 
+    def items(self):
+        for k in self.keys():
+            yield k, self[k]
 
-def load_all_price_models():
-    """Scans models/ folder for *_price_model.joblib files."""
-    registry = {}
-    if not os.path.isdir(MODEL_DIR):
-        return registry
-    for fname in os.listdir(MODEL_DIR):
-        if fname.endswith("_price_model.joblib"):
-            safe_name = fname.replace("_price_model.joblib", "")
-            model_path = os.path.join(MODEL_DIR, fname)
-            meta_path = os.path.join(MODEL_DIR, f"{safe_name}_price_meta.joblib")
-            try:
-                model = joblib.load(model_path)
-                meta = joblib.load(meta_path) if os.path.exists(meta_path) else {}
-                display_name = safe_name.replace("_", " ")
-                registry[display_name] = {
-                    "model": model,
-                    "meta": meta
-                }
-                print(f"[startup] Loaded price model for crop: {display_name}")
-            except Exception as e:
-                print(f"[startup] WARNING: Error loading price model for {safe_name}: {e}")
-                continue
-    return registry
+    def values(self):
+        for k in self.keys():
+            yield self[k]
 
+    def __getitem__(self, key):
+        if key not in self._meta:
+            raise KeyError(key)
+        if key in self._cache:
+            return self._cache[key]
 
-PRICE_MODEL_REGISTRY = load_all_price_models()
+        model_path, encoders_path, safe_name = self._meta[key]
+        try:
+            if len(self._cache) >= 5:
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
+                gc.collect()
 
-
-def load_global_model_v2():
-    v2_path = os.path.join(MODEL_DIR, "yield_model_v2.joblib")
-    meta_path = os.path.join(MODEL_DIR, "yield_model_v2_meta.joblib")
-    if os.path.exists(v2_path) and os.path.exists(meta_path):
-        model = joblib.load(v2_path)
-        meta = joblib.load(meta_path)
-        print(f"[startup] Loaded Global Yield Model V2 (Test R²: {meta.get('r2_test', 0.9488):.4f})")
-        return {"model": model, "meta": meta}
-    return None
+            model = joblib.load(model_path)
+            bundle = joblib.load(encoders_path)
+            entry = {
+                "model": model,
+                "encoders": bundle["encoders"],
+                "feature_cols": bundle["feature_cols"],
+                "safe_name": safe_name,
+            }
+            self._cache[key] = entry
+            print(f"[lazy-load] Loaded model for crop: {key}")
+            return entry
+        except Exception as e:
+            print(f"[lazy-load] Error loading model for {key}: {e}")
+            raise KeyError(f"Failed to load model {key}: {e}")
 
 
-GLOBAL_MODEL_V2 = load_global_model_v2()
+MODEL_REGISTRY = LazyModelRegistry(MODEL_DIR)
+
+
+class LazyPriceModelRegistry(dict):
+    def __init__(self, model_dir):
+        super().__init__()
+        self.model_dir = model_dir
+        self._meta = {}
+        self._cache = {}
+        if os.path.isdir(model_dir):
+            for fname in os.listdir(model_dir):
+                if fname.endswith("_price_model.joblib"):
+                    safe_name = fname.replace("_price_model.joblib", "")
+                    model_path = os.path.join(model_dir, fname)
+                    meta_path = os.path.join(model_dir, f"{safe_name}_price_meta.joblib")
+                    display_name = safe_name.replace("_", " ")
+                    self._meta[display_name] = (model_path, meta_path)
+
+    def keys(self):
+        return self._meta.keys()
+
+    def __iter__(self):
+        return iter(self._meta)
+
+    def __len__(self):
+        return len(self._meta)
+
+    def __contains__(self, key):
+        return key in self._meta
+
+    def get(self, key, default=None):
+        if key in self._meta:
+            return self[key]
+        return default
+
+    def __getitem__(self, key):
+        if key not in self._meta:
+            raise KeyError(key)
+        if key in self._cache:
+            return self._cache[key]
+
+        model_path, meta_path = self._meta[key]
+        try:
+            if len(self._cache) >= 3:
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
+                gc.collect()
+
+            model = joblib.load(model_path)
+            meta = joblib.load(meta_path) if os.path.exists(meta_path) else {}
+            entry = {
+                "model": model,
+                "meta": meta
+            }
+            self._cache[key] = entry
+            print(f"[lazy-load] Loaded price model for crop: {key}")
+            return entry
+        except Exception as e:
+            print(f"[lazy-load] Error loading price model for {key}: {e}")
+            return default
+
+
+PRICE_MODEL_REGISTRY = LazyPriceModelRegistry(MODEL_DIR)
+
+
+class LazyGlobalModel:
+    def __init__(self, model_dir):
+        self.model_dir = model_dir
+        self._data = None
+
+    def _load(self):
+        if self._data is None:
+            v2_path = os.path.join(self.model_dir, "yield_model_v2.joblib")
+            meta_path = os.path.join(self.model_dir, "yield_model_v2_meta.joblib")
+            if os.path.exists(v2_path) and os.path.exists(meta_path):
+                m = joblib.load(v2_path)
+                meta = joblib.load(meta_path)
+                self._data = {"model": m, "meta": meta}
+                print("[lazy-load] Loaded Global Yield Model V2")
+        return self._data
+
+    def __bool__(self):
+        return os.path.exists(os.path.join(self.model_dir, "yield_model_v2.joblib"))
+
+    def __getitem__(self, key):
+        d = self._load()
+        return d[key]
+
+    def get(self, key, default=None):
+        d = self._load()
+        return d.get(key, default) if d else default
+
+
+GLOBAL_MODEL_V2 = LazyGlobalModel(MODEL_DIR)
 
 
 # ============================================================
