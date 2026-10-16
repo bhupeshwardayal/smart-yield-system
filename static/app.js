@@ -3,10 +3,11 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Config - robustly target Flask API port 5000 even if page opened via Live Server/static file
-  const API_BASE_URL = (window.location.origin && window.location.origin.includes('5000'))
-    ? window.location.origin
-    : 'http://127.0.0.1:5000';
+  // Config - automatically use current cloud origin or localhost:5000
+  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const API_BASE_URL = (!window.location.protocol.startsWith('http') || (isLocalDev && window.location.port !== '5000'))
+    ? 'http://127.0.0.1:5000'
+    : window.location.origin;
 
   // Safe fetch helper to permanently prevent JSON syntax errors when server returns HTML or 500 error
   async function fetchJsonSafe(url, options = {}) {
