@@ -1,10 +1,10 @@
 FROM python:3.11-slim
 
-# Create user with UID 1000 for Hugging Face container permissions
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH
+    PATH=/home/user/.local/bin:$PATH \
+    PORT=10000
 
 WORKDIR $HOME/app
 
@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application files
 COPY --chown=user:user . .
 
-# Hugging Face Spaces exposes port 7860
-EXPOSE 7860
+EXPOSE 10000
 
-CMD ["python", "app.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
