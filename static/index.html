@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crop Yield & Price Prediction Dashboard</title>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-wheat-awn"></i>
+        </div>
+        <div>
+          <div class="brand-title">AgriPredict</div>
+          <div class="brand-subtitle" data-i18n="brand_subtitle">Smart Yield & Price System</div>
+        </div>
+      </div>
+
+      <ul class="nav-menu">
+        <li>
+          <a class="nav-item active" data-tab="tab-predictor" id="nav-predictor">
+            <i class="fa-solid fa-calculator"></i>
+            <span data-i18n="nav_predictor">Yield Predictor</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-item" data-tab="tab-recommender" id="nav-recommender">
+            <i class="fa-solid fa-seedling"></i>
+            <span data-i18n="nav_recommender">Smart Crop Advisor</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-item" data-tab="tab-analytics" id="nav-analytics">
+            <i class="fa-solid fa-chart-line"></i>
+            <span data-i18n="nav_analytics">Price Trends</span>
+          </a>
+      </ul>
+
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Header -->
+      <header class="top-header">
+        <div class="header-title">
+          <h1 id="view-title" data-i18n="view_title_predictor">Crop Yield & Availability Predictor</h1>
+          <p id="view-desc" data-i18n="view_desc_predictor">Predict crop production (tons/ha) and check regional supply availability using trained ML models.</p>
+        </div>
+
+        <div class="quick-stats" style="align-items: center;">
+          <button id="btn-lang-toggle" class="btn" style="background: rgba(255,255,255,0.08); padding: 0.5rem 1rem; font-size: 0.85rem; border: 1px solid var(--bg-card-border);">
+            <i class="fa-solid fa-language"></i> <span id="lang-label">हिन्दी</span>
+          </button>
+          <button id="btn-export-csv" class="btn" style="background: rgba(16,185,129,0.15); color: var(--primary-light); padding: 0.5rem 1rem; font-size: 0.85rem; border: 1px solid rgba(16,185,129,0.3);">
+            <i class="fa-solid fa-download"></i> <span data-i18n="btn_export_csv">Export CSV</span>
+          </button>
+          <div class="stat-pill">
+            <i class="fa-solid fa-seedling"></i>
+            <span data-i18n="stat_crops_active">Crops Active:</span>
+            <span class="val" id="pill-crops-count">15</span>
+          </div>
+          <div class="stat-pill">
+            <i class="fa-solid fa-database"></i>
+            <span data-i18n="stat_dataset_rows">Dataset Rows:</span>
+            <span class="val">240,000+</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- TAB 1: YIELD PREDICTOR -->
+      <section id="tab-predictor" class="tab-view active">
+        <div class="grid-2">
+          
+          <!-- Input Form Card -->
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">
+                <i class="fa-solid fa-sliders"></i>
+                <span data-i18n="title_prediction_inputs">Prediction Inputs</span>
+              </h2>
+            </div>
+
+            <div id="predictor-error" class="alert alert-danger" style="display: none;"></div>
+
+            <form id="prediction-form">
+              <div class="form-group">
+                <label class="form-label" for="select-crop" data-i18n="label_select_crop">Select Crop</label>
+                <select id="select-crop" class="form-select" required>
+                  <option value="Wheat">Wheat</option>
+                  <option value="Rice">Rice</option>
+                  <option value="Maize">Maize</option>
+                  <option value="Sugarcane">Sugarcane</option>
+                  <option value="Cotton">Cotton</option>
+                  <option value="Potato">Potato</option>
+                  <option value="Onion">Onion</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="select-state" data-i18n="label_state">State</label>
+                <select id="select-state" class="form-select" required>
+                  <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
+                  <option value="Andhra Pradesh">Andhra Pradesh</option>
+                  <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                  <option value="Assam">Assam</option>
+                  <option value="Bihar">Bihar</option>
+                  <option value="Chandigarh">Chandigarh</option>
+                  <option value="Chhattisgarh">Chhattisgarh</option>
+                  <option value="Dadra and Nagar Haveli">Dadra and Nagar Haveli</option>
+                  <option value="Delhi">Delhi</option>
+                  <option value="Goa">Goa</option>
+                  <option value="Gujarat">Gujarat</option>
+                  <option value="Haryana">Haryana</option>
+                  <option value="Himachal Pradesh">Himachal Pradesh</option>
+                  <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+                  <option value="Jharkhand">Jharkhand</option>
+                  <option value="Karnataka">Karnataka</option>
+                  <option value="Kerala">Kerala</option>
+                  <option value="Ladakh">Ladakh</option>
+                  <option value="Lakshadweep">Lakshadweep</option>
+                  <option value="Madhya Pradesh">Madhya Pradesh</option>
+                  <option value="Maharashtra">Maharashtra</option>
+                  <option value="Manipur">Manipur</option>
+                  <option value="Meghalaya">Meghalaya</option>
+                  <option value="Mizoram">Mizoram</option>
+                  <option value="Nagaland">Nagaland</option>
+                  <option value="Odisha">Odisha</option>
+                  <option value="Puducherry">Puducherry</option>
+                  <option value="Punjab" selected>Punjab</option>
+                  <option value="Rajasthan">Rajasthan</option>
+                  <option value="Sikkim">Sikkim</option>
+                  <option value="Tamil Nadu">Tamil Nadu</option>
+                  <option value="Telangana">Telangana</option>
+                  <option value="Tripura">Tripura</option>
+                  <option value="Uttar Pradesh">Uttar Pradesh</option>
+                  <option value="Uttarakhand">Uttarakhand</option>
+                  <option value="West Bengal">West Bengal</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="select-district" data-i18n="label_district">District / Location</label>
+                <select id="select-district" class="form-select" required>
+                  <option value="Ludhiana">Ludhiana</option>
+                  <option value="Amritsar">Amritsar</option>
+                  <option value="Patiala">Patiala</option>
+                  <option value="Jalandhar">Jalandhar</option>
+                  <option value="Bhatinda">Bhatinda</option>
+                  <option value="Abohar APMC">Abohar APMC</option>
+                </select>
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label" for="select-season" data-i18n="label_season">Season</label>
+                  <select id="select-season" class="form-select" required>
+                    <option value="Rabi">Rabi</option>
+                    <option value="Kharif">Kharif</option>
+                    <option value="Whole Year">Whole Year</option>
+                    <option value="Summer">Summer</option>
+                    <option value="Winter">Winter</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="input-year" data-i18n="label_crop_year">Crop Year</label>
+                  <input type="number" id="input-year" class="form-control" value="2025" min="2000" max="2035" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="input-area" data-i18n="label_cultivation_area">Cultivation Area (Hectares)</label>
+                <input type="number" id="input-area" class="form-control" value="1000" min="1" step="any" required>
+              </div>
+
+              <!-- Climate Parameters Collapsible Box -->
+              <div style="background: rgba(11, 15, 25, 0.6); border: 1px solid var(--bg-card-border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="document.getElementById('climate-fields').style.display = document.getElementById('climate-fields').style.display === 'none' ? 'grid' : 'none'">
+                  <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-light);">
+                    <i class="fa-solid fa-cloud-sun-rain"></i> <span data-i18n="title_climate_params">Climate & Weather Parameters</span>
+                  </div>
+                  <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; color: var(--text-dim);"></i>
+                </div>
+
+                <div id="climate-fields" class="grid-2" style="margin-top: 0.85rem; display: grid; gap: 0.75rem;">
+                  <div>
+                    <label class="form-label" style="font-size: 0.75rem;" data-i18n="label_avg_temp">Avg Temp (°C)</label>
+                    <input type="number" id="input-temp" class="form-control" value="21.0" step="0.1">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 0.75rem;" data-i18n="label_rainfall">Rainfall (mm)</label>
+                    <input type="number" id="input-rain" class="form-control" value="120.0" step="1">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 0.75rem;" data-i18n="label_humidity">Humidity (%)</label>
+                    <input type="number" id="input-hum" class="form-control" value="62.0" step="1">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 0.75rem;" data-i18n="label_heat_days">Extreme Heat Days</label>
+                    <input type="number" id="input-heat" class="form-control" value="1" min="0">
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block" id="btn-predict">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span data-i18n="btn_calculate_yield">Calculate Predicted Yield & Availability</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Output Results Card -->
+          <div class="card" id="results-card">
+            <div class="card-header">
+              <h2 class="card-title">
+                <i class="fa-solid fa-square-poll-vertical"></i>
+                <span data-i18n="title_prediction_results">Prediction Results</span>
+              </h2>
+              <span id="availability-badge-container"></span>
+            </div>
+
+            <div id="results-placeholder" style="text-align: center; padding: 4rem 1rem; color: var(--text-dim);">
+              <i class="fa-solid fa-chart-pie" style="font-size: 3.5rem; margin-bottom: 1rem; opacity: 0.4;"></i>
+              <p data-i18n="results_placeholder_text">Fill in the parameters on the left and click Calculate to view ML yield forecasts and market status.</p>
+            </div>
+
+            <div id="results-content" style="display: none;">
+              <div class="result-box">
+                <div class="result-metric">
+                  <div class="metric-value" id="res-yield">--</div>
+                  <div class="metric-unit" data-i18n="unit_predicted_yield">Predicted Yield (Tons / Hectare)</div>
+                </div>
+              </div>
+
+              <div class="grid-2" style="margin-top: 1.25rem;">
+                <div class="card" style="padding: 1.25rem; background: rgba(11, 15, 25, 0.5);">
+                  <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_total_est_production">Total Est. Production</div>
+                  <div style="font-size: 1.6rem; font-weight: 700; color: var(--text-main); margin-top: 0.2rem;" id="res-production">--</div>
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" id="res-area-summary">for -- Hectares</div>
+                </div>
+
+                <div class="card" style="padding: 1.25rem; background: rgba(11, 15, 25, 0.5);">
+                  <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_historical_benchmark">Historical Benchmark</div>
+                  <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent-amber); margin-top: 0.2rem;" id="res-benchmark">--</div>
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" id="res-diff-summary" data-i18n="label_vs_district_avg">vs. district average</div>
+                </div>
+              </div>
+
+              <!-- Profit & ROI Summary Card -->
+              <div class="result-box" style="margin-top: 1.25rem; background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(6,182,212,0.05)); border: 1px solid rgba(16,185,129,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_farmer_net_profit">Estimated Farmer Net Profit</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: var(--primary-light);" id="res-net-profit">Rs. --</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_expected_roi">Expected ROI</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-amber);" id="res-roi">--%</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="alert alert-info" style="margin-top: 1.25rem; margin-bottom: 0;">
+                <i class="fa-solid fa-circle-info"></i>
+                <span id="res-explanation" data-i18n="text_availability_explanation">Availability status is computed by comparing forecasted yield against historical district averages.</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB: SMART CROP ADVISOR -->
+      <section id="tab-recommender" class="tab-view">
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header">
+            <h2 class="card-title">
+              <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary-light);"></i>
+              <span data-i18n="title_smart_advisor">Smart Crop Advisor</span>
+            </h2>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;" data-i18n="desc_smart_advisor">
+            Select your location, season, and cultivation area. Our AI system evaluates all 15 crop models simultaneously to recommend the top 3 highest yielding and most profitable crops for your region.
+          </p>
+
+          <form id="recommender-form" class="grid-4">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" data-i18n="label_state">State</label>
+              <select id="rec-select-state" class="form-select">
+                <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                <option value="Assam">Assam</option>
+                <option value="Bihar">Bihar</option>
+                <option value="Chandigarh">Chandigarh</option>
+                <option value="Chhattisgarh">Chhattisgarh</option>
+                <option value="Dadra and Nagar Haveli">Dadra and Nagar Haveli</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Goa">Goa</option>
+                <option value="Gujarat">Gujarat</option>
+                <option value="Haryana">Haryana</option>
+                <option value="Himachal Pradesh">Himachal Pradesh</option>
+                <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+                <option value="Jharkhand">Jharkhand</option>
+                <option value="Karnataka">Karnataka</option>
+                <option value="Kerala">Kerala</option>
+                <option value="Ladakh">Ladakh</option>
+                <option value="Lakshadweep">Lakshadweep</option>
+                <option value="Madhya Pradesh">Madhya Pradesh</option>
+                <option value="Maharashtra">Maharashtra</option>
+                <option value="Manipur">Manipur</option>
+                <option value="Meghalaya">Meghalaya</option>
+                <option value="Mizoram">Mizoram</option>
+                <option value="Nagaland">Nagaland</option>
+                <option value="Odisha">Odisha</option>
+                <option value="Puducherry">Puducherry</option>
+                <option value="Punjab" selected>Punjab</option>
+                <option value="Rajasthan">Rajasthan</option>
+                <option value="Sikkim">Sikkim</option>
+                <option value="Tamil Nadu">Tamil Nadu</option>
+                <option value="Telangana">Telangana</option>
+                <option value="Tripura">Tripura</option>
+                <option value="Uttar Pradesh">Uttar Pradesh</option>
+                <option value="Uttarakhand">Uttarakhand</option>
+                <option value="West Bengal">West Bengal</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" data-i18n="label_district">District</label>
+              <select id="rec-select-district" class="form-select">
+                <option value="Ludhiana">Ludhiana</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" data-i18n="label_season">Season</label>
+              <select id="rec-select-season" class="form-select">
+                <option value="Rabi">Rabi</option>
+                <option value="Kharif">Kharif</option>
+                <option value="Whole Year">Whole Year</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0; display: flex; align-items: flex-end;">
+              <button type="submit" class="btn btn-primary btn-block" id="btn-recommend">
+                <i class="fa-solid fa-lightbulb"></i> <span data-i18n="btn_rank_best_crops">Rank Best Crops</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div id="recommender-results" class="grid-3" style="display: none;">
+          <!-- Top 3 cards inserted via app.js -->
+        </div>
+      </section>
+
+      <!-- TAB 2: PRICE TREND ANALYTICS -->
+      <section id="tab-analytics" class="tab-view">
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header">
+            <h2 class="card-title">
+              <i class="fa-solid fa-chart-area"></i>
+              <span data-i18n="title_price_analytics">Historical Market Price Analytics</span>
+            </h2>
+          </div>
+
+          <form id="price-trend-form" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; min-width: 180px; margin-bottom: 0;">
+              <label class="form-label" for="price-select-crop" data-i18n="label_price_crop">Crop</label>
+              <select id="price-select-crop" class="form-select" required>
+                <option value="Wheat">Wheat</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 1; min-width: 180px; margin-bottom: 0;">
+              <label class="form-label" for="price-select-state" data-i18n="label_state">State</label>
+              <select id="price-select-state" class="form-select">
+                <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                <option value="Assam">Assam</option>
+                <option value="Bihar">Bihar</option>
+                <option value="Chandigarh">Chandigarh</option>
+                <option value="Chhattisgarh">Chhattisgarh</option>
+                <option value="Dadra and Nagar Haveli">Dadra and Nagar Haveli</option>
+                <option value="Delhi">Delhi</option>
+                <option value="Goa">Goa</option>
+                <option value="Gujarat">Gujarat</option>
+                <option value="Haryana">Haryana</option>
+                <option value="Himachal Pradesh">Himachal Pradesh</option>
+                <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+                <option value="Jharkhand">Jharkhand</option>
+                <option value="Karnataka">Karnataka</option>
+                <option value="Kerala">Kerala</option>
+                <option value="Ladakh">Ladakh</option>
+                <option value="Lakshadweep">Lakshadweep</option>
+                <option value="Madhya Pradesh">Madhya Pradesh</option>
+                <option value="Maharashtra">Maharashtra</option>
+                <option value="Manipur">Manipur</option>
+                <option value="Meghalaya">Meghalaya</option>
+                <option value="Mizoram">Mizoram</option>
+                <option value="Nagaland">Nagaland</option>
+                <option value="Odisha">Odisha</option>
+                <option value="Puducherry">Puducherry</option>
+                <option value="Punjab" selected>Punjab</option>
+                <option value="Rajasthan">Rajasthan</option>
+                <option value="Sikkim">Sikkim</option>
+                <option value="Tamil Nadu">Tamil Nadu</option>
+                <option value="Telangana">Telangana</option>
+                <option value="Tripura">Tripura</option>
+                <option value="Uttar Pradesh">Uttar Pradesh</option>
+                <option value="Uttarakhand">Uttarakhand</option>
+                <option value="West Bengal">West Bengal</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 1; min-width: 180px; margin-bottom: 0;">
+              <label class="form-label" for="price-select-district" data-i18n="label_price_market">Market / District</label>
+              <select id="price-select-district" class="form-select" required>
+                <option value="Ludhiana">Ludhiana</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 0.8; min-width: 150px; margin-bottom: 0;">
+              <label class="form-label" for="price-select-days" data-i18n="label_ai_forecast">AI Forecast Ahead</label>
+              <select id="price-select-days" class="form-select">
+                <option value="7">7 Days Ahead</option>
+                <option value="14">14 Days Ahead</option>
+                <option value="30">30 Days Ahead</option>
+              </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="btn-fetch-prices">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span data-i18n="btn_render_forecast">Render Forecast & Chart</span>
+            </button>
+          </form>
+        </div>
+
+        <div id="price-forecast-card" class="grid-3" style="display: none; margin-bottom: 1.5rem;">
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_current_mandi_price">Current Mandi Price</div>
+            <div style="font-size: 1.6rem; font-weight: 700; color: var(--text-main); margin-top: 0.2rem;" id="fc-current">--</div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);" data-i18n="unit_rs_quintal">Rs./Quintal (latest)</div>
+          </div>
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_forecasted_price">Forecasted Price</div>
+            <div style="font-size: 1.6rem; font-weight: 700; color: var(--primary-light); margin-top: 0.2rem;" id="fc-forecast">--</div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);" id="fc-days-label">in 7 days</div>
+          </div>
+          <div class="card" style="padding: 1.25rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;" data-i18n="label_expected_price_trend">Expected Price Trend</div>
+            <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent-amber); margin-top: 0.2rem;" id="fc-trend">--</div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);" id="fc-pct-label">0.0% change</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="chart-wrapper">
+            <canvas id="priceChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Custom Client Script -->
+  <script src="app.js"></script>
+</body>
+</html>
