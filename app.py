@@ -347,7 +347,13 @@ def predict_yield():
             "error": f"No trained model for crop '{crop}'."
         }), 404
 
-    entry = MODEL_REGISTRY.get(model_key, list(MODEL_REGISTRY.values())[0] if MODEL_REGISTRY else None)
+    entry = MODEL_REGISTRY.get(model_key)
+    if not entry and len(MODEL_REGISTRY) > 0:
+        first_key = next(iter(MODEL_REGISTRY.keys()))
+        entry = MODEL_REGISTRY.get(first_key)
+    if not entry:
+        return jsonify({"error": f"Model for '{crop}' could not be loaded."}), 500
+
     model = entry["model"]
     encoders = entry["encoders"]
     feature_cols = entry["feature_cols"]
@@ -811,7 +817,10 @@ def recommend_crops():
                 "roi_percent": roi_pct
             })
     else:
-        for crop_name, entry in MODEL_REGISTRY.items():
+        for crop_name in list(MODEL_REGISTRY.keys())[:10]:
+            entry = MODEL_REGISTRY.get(crop_name)
+            if not entry:
+                continue
             model = entry["model"]
             encoders = entry["encoders"]
             feature_cols = entry["feature_cols"]
