@@ -9,6 +9,15 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Client-side PDF Generation Engine -->
+  <script src="jspdf.umd.min.js"></script>
+  <script src="jspdf.plugin.autotable.min.js"></script>
+  <script src="html2pdf.bundle.min.js"></script>
+  <script>
+    if (typeof html2pdf === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\\/script>');
+    }
+  </script>
   
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -65,8 +74,8 @@
           <button id="btn-lang-toggle" class="btn" style="background: rgba(255,255,255,0.08); padding: 0.5rem 1rem; font-size: 0.85rem; border: 1px solid var(--bg-card-border);">
             <i class="fa-solid fa-language"></i> <span id="lang-label">हिन्दी</span>
           </button>
-          <button id="btn-export-csv" class="btn" style="background: rgba(16,185,129,0.15); color: var(--primary-light); padding: 0.5rem 1rem; font-size: 0.85rem; border: 1px solid rgba(16,185,129,0.3);">
-            <i class="fa-solid fa-download"></i> <span data-i18n="btn_export_csv">Export CSV</span>
+          <button id="btn-export-pdf" class="btn" style="background: rgba(239,68,68,0.15); color: #f87171; padding: 0.5rem 1rem; font-size: 0.85rem; border: 1px solid rgba(239,68,68,0.35); transition: all 0.2s ease;">
+            <i class="fa-solid fa-file-pdf"></i> <span data-i18n="btn_export_pdf">Export PDF</span>
           </button>
           <div class="stat-pill">
             <i class="fa-solid fa-seedling"></i>

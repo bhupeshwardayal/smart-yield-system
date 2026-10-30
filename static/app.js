@@ -3,11 +3,10 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Config - automatically use current cloud origin or localhost:5000
-  const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const API_BASE_URL = (!window.location.protocol.startsWith('http') || (isLocalDev && window.location.port !== '5000'))
-    ? 'http://127.0.0.1:5000'
-    : window.location.origin;
+  // Config - automatically use current origin when served via HTTP/S, or default to localhost:10000 if opened directly from filesystem
+  const API_BASE_URL = window.location.protocol.startsWith('http')
+    ? window.location.origin
+    : 'http://127.0.0.1:10000';
 
   // Safe fetch helper to permanently prevent JSON syntax errors when server returns HTML or 500 error
   async function fetchJsonSafe(url, options = {}) {
@@ -487,7 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
       view_title_models: 'प्रशिक्षित मॉडल और प्रदर्शन अवलोकन',
       view_desc_models: 'प्रत्येक फसल के लिए प्रशिक्षित मशीन लर्निंग एल्गोरिदम और सटीकता देखें।',
 
-      btn_export_csv: 'सीएसवी डाउनलोड',
+      btn_export_pdf: 'पीडीएफ डाउनलोड',
+      btn_export_csv: 'पीडीएफ डाउनलोड',
       stat_crops_active: 'सक्रिय फसलें:',
       stat_dataset_rows: 'डेटासेट पंक्तियाँ:',
 
@@ -552,7 +552,8 @@ document.addEventListener('DOMContentLoaded', () => {
       view_title_models: 'Trained Models & Performance Overview',
       view_desc_models: 'Review R² accuracy scores, algorithm selections, and training parameters per crop.',
 
-      btn_export_csv: 'Export CSV',
+      btn_export_pdf: 'Export PDF',
+      btn_export_csv: 'Export PDF',
       stat_crops_active: 'Crops Active:',
       stat_dataset_rows: 'Dataset Rows:',
 
@@ -655,23 +656,395 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Export CSV Handler
-  const btnExportCsv = document.getElementById('btn-export-csv');
-  if (btnExportCsv) {
-    btnExportCsv.addEventListener('click', () => {
-      const crop = selectCrop.value || 'Crop';
-      const yieldVal = resYield.textContent || '0';
-      const prod = resProduction.textContent || '0';
-      const netProfit = document.getElementById('res-net-profit')?.textContent || '0';
+  const CROP_TRANSLATIONS_HI = {
+    'Wheat': 'गेहूं (Wheat)', 'Rice': 'धान / चावल (Rice)', 'Cotton': 'कपास (Cotton)',
+    'Cottonlint': 'कपास (Cotton)', 'Sugarcane': 'गन्ना (Sugarcane)', 'Maize': 'मक्का (Maize)',
+    'Gram': 'चना (Gram)', 'Potato': 'आलू (Potato)', 'Tomato': 'टमाटर (Tomato)',
+    'Onion': 'प्याज (Onion)', 'Bhindi': 'भिंडी (Bhindi)', 'Soybean': 'सोयाबीन (Soybean)',
+    'Groundnut': 'मूंगफली (Groundnut)', 'Bajra': 'बाजरा (Bajra)', 'Jowar': 'ज्वार (Jowar)',
+    'Moong': 'मूंग (Moong)', 'Urad': 'उड़द (Urad)', 'Mustard': 'सरसों (Mustard)',
+    'Rapeseed & Mustard': 'सरसों (Mustard)', 'Barley': 'जौ (Barley)', 'Banana': 'केला (Banana)',
+    'Apple': 'सेब (Apple)', 'Mango': 'आम (Mango)', 'Orange': 'संतरा (Orange)',
+    'Grapes': 'अंगूर (Grapes)', 'Papaya': 'पपीता (Papaya)', 'Garlic': 'लहसुन (Garlic)',
+    'Ginger': 'अदरक (Ginger)', 'Turmeric': 'हल्दी (Turmeric)', 'Chilli': 'मिर्च (Chilli)'
+  };
 
-      const csvContent = `data:text/csv;charset=utf-8,Parameter,Value\nCrop,${crop}\nState,${selectState.value}\nDistrict,${selectDistrict.value}\nPredicted Yield (Tons/Ha),${yieldVal}\nTotal Production,${prod}\nEstimated Net Profit,${netProfit.replace(/,/g, '')}\n`;
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `${crop}_Prediction_Report.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const SEASON_TRANSLATIONS_HI = {
+    'Rabi': 'रबी (Rabi)',
+    'Kharif': 'खरीफ (Kharif)',
+    'Whole Year': 'संपूर्ण वर्ष (Whole Year)',
+    'Summer': 'जायद / ग्रीष्मकालीन (Summer)',
+    'Autumn': 'शरद (Autumn)',
+    'Winter': 'शीतकालीन (Winter)'
+  };
+
+  // Direct Client-Side PDF Generation Engine (Bilingual Hindi/English, 100% offline)
+  async function generateClientPdf(data, lang = 'en') {
+    const isHi = (lang === 'hi');
+    const cropDisplay = (isHi && CROP_TRANSLATIONS_HI[data.crop]) ? CROP_TRANSLATIONS_HI[data.crop] : data.crop;
+    const seasonDisplay = (isHi && SEASON_TRANSLATIONS_HI[data.season]) ? SEASON_TRANSLATIONS_HI[data.season] : data.season;
+
+    const priceQtl = data.price_per_qtl || 2125;
+    const grossRev = data.gross_revenue_rs || (data.predicted_yield_per_ha * 10 * priceQtl * data.area_hectare);
+    const totalCost = data.total_cost_rs || (40000 * data.area_hectare);
+    const netProfit = data.net_profit_rs || (grossRev - totalCost);
+    const roi = totalCost > 0 ? ((netProfit / totalCost) * 100).toFixed(1) : '0.0';
+
+    let statusDisplay = data.availability_status.toUpperCase();
+    let statusBg = '#ecfdf5';
+    let statusBorder = '#10b981';
+    let statusTextCol = '#047857';
+
+    if (data.availability_status.toLowerCase() === 'shortage') {
+      statusDisplay = isHi ? 'कमी (SHORTAGE)' : 'SHORTAGE';
+      statusBg = '#fef2f2';
+      statusBorder = '#ef4444';
+      statusTextCol = '#b91c1c';
+    } else if (data.availability_status.toLowerCase() === 'surplus') {
+      statusDisplay = isHi ? 'अधिशेष (SURPLUS)' : 'SURPLUS';
+      statusBg = '#ecfdf5';
+      statusBorder = '#10b981';
+      statusTextCol = '#047857';
+    } else {
+      statusDisplay = isHi ? 'सामान्य (NORMAL)' : 'NORMAL';
+      statusBg = '#fffbeb';
+      statusBorder = '#f59e0b';
+      statusTextCol = '#b45309';
+    }
+
+    let advisoryText = '';
+    const st = data.availability_status.toLowerCase();
+    if (st === 'shortage') {
+      advisoryText = isHi
+        ? '<b>बाजार चेतावनी:</b> क्षेत्रीय उपज ऐतिहासिक औसत से कम रहने का अनुमान है। सीमित आपूर्ति के कारण स्थानीय मंडी की कीमतें बढ़ने की संभावना है। किसानों को सलाह दी जाती है कि वे फूल और दाना भरने के चरणों में सिंचाई प्रबंधन बनाए रखें, अनुशंसित सूक्ष्म पोषक तत्वों का उपयोग करें और बेहतर लाभ के लिए चरणबद्ध तरीके से उपज बेचें।'
+        : '<b>Market Warning:</b> Regional yield is projected below historical averages. Local mandi prices are expected to firm up due to tighter supply. Farmers are advised to maintain strict irrigation scheduling, apply micronutrients, and stagger market releases to capture peak prices.';
+    } else if (st === 'surplus') {
+      advisoryText = isHi
+        ? '<b>बाजार अवसर:</b> ऐतिहासिक बेंचमार्क से अधिक मजबूत उत्पादन का अनुमान है। आवक अधिक होने पर कटाई के समय कीमतों में अस्थायी नरमी आ सकती है। संकटपूर्ण बिक्री से बचने के लिए किसानों को प्रमाणित गोदाम भंडारण (WDRA सुविधाएं) या ई-एनडब्ल्यूआर का उपयोग करने की सलाह दी जाती है।'
+        : '<b>Market Opportunity:</b> Strong production volume is forecast above regional benchmarks. Heavy mandi arrivals may lead to temporary price softening. Farmers are recommended to utilize WDRA-certified warehouses or e-NWR pledges to avoid distress sales.';
+    } else {
+      advisoryText = isHi
+        ? '<b>स्थिर दृष्टिकोण:</b> फसल उत्पादन क्षेत्रीय सामान्य बेंचमार्क के अनुरूप है। नियमित कृषि पद्धतियों और समय पर कटाई की सिफारिश की जाती है। साप्ताहिक एपीएमसी मंडी दरों पर नजर रखें और यदि खुले बाजार की दरें कम होती हैं तो सरकारी एमएसपी खरीद का लाभ उठाएं।'
+        : '<b>Stable Outlook:</b> Crop yield aligns with regional benchmarks. Maintain standard agronomic practices and monitor APMC mandi prices. Leverage government procurement at MSP if open market trade dips below benchmark.';
+    }
+
+    const dateStr = new Date().toLocaleString(isHi ? 'hi-IN' : 'en-IN', { dateStyle: 'long', timeStyle: 'short' });
+
+    // Method 1: High-DPI HTML-to-PDF rendering (Native Devanagari Hindi & English)
+    if (window.html2pdf) {
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'fixed';
+      wrapper.style.top = '0';
+      wrapper.style.left = '0';
+      wrapper.style.width = '0';
+      wrapper.style.height = '0';
+      wrapper.style.overflow = 'hidden';
+      wrapper.style.zIndex = '-9999';
+
+      const container = document.createElement('div');
+      container.style.width = '790px';
+      container.style.background = '#ffffff';
+      container.style.color = '#1f2937';
+      container.style.padding = '24px 28px';
+      container.style.fontFamily = isHi
+        ? '"Nirmala UI", "Mangal", "Segoe UI", sans-serif'
+        : '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Nirmala UI", sans-serif';
+      container.style.boxSizing = 'border-box';
+
+      container.innerHTML = `
+        <div style="border-bottom: 2px solid #10b981; padding-bottom: 12px; margin-bottom: 14px;">
+          <h1 style="font-size: 18px; font-weight: 700; color: #065f46; margin: 0 0 5px 0; line-height: 1.35; ${isHi ? 'text-transform: none; letter-spacing: normal;' : 'text-transform: uppercase; letter-spacing: 0.5px;'}">
+            ${isHi ? 'एग्रीप्रेडिक्ट — स्मार्ट फसल उपज एवं बाजार मूल्य पूर्वानुमान' : 'AGRIPREDICT — SMART CROP YIELD & MARKET FORECASTING'}
+          </h1>
+          <div style="font-size: 11px; color: #047857; font-weight: 600; margin-bottom: 4px;">
+            ${isHi ? 'कृषि निर्णय समर्थन एवं व्यापक पूर्वानुमान रिपोर्ट' : 'Agricultural Decision Support & Comprehensive Prediction Report'}
+          </div>
+          <div style="font-size: 9.5px; color: #6b7280;">
+            ${isHi ? 'रिपोर्ट निर्माण तिथि' : 'Generated On'}: ${dateStr} &nbsp;|&nbsp; ${isHi ? 'प्रणाली: स्मार्ट कृषि उपज एवं मूल्य विश्लेषक' : 'System: Smart Crop Yield & Price System'}
+          </div>
+        </div>
+
+        <div style="margin-bottom: 13px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #065f46; margin-bottom: 5px;">
+            ${isHi ? '1. कृषि एवं क्षेत्रीय जानकारी' : '1. Farm & Regional Information'}
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 22%;">${isHi ? 'लक्षित फसल' : 'Target Crop'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 28%; font-weight: 600; color: #065f46;">${cropDisplay}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 22%;">${isHi ? 'फसल मौसम' : 'Cropping Season'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 28%;">${seasonDisplay}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'राज्य / केंद्र शासित प्रदेश' : 'State / UT'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${data.state}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'जिला / मंडी' : 'District / Market'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${data.district}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'फसल वर्ष' : 'Harvest Year'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${data.crop_year}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'खेती क्षेत्र' : 'Farm Cultivation Area'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${Number(data.area_hectare).toLocaleString()} ${isHi ? 'हेक्टेयर' : 'Hectares'} (~${(data.area_hectare * 2.471).toLocaleString(undefined, {maximumFractionDigits:1})} ${isHi ? 'एकड़' : 'Acres'})</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="margin-bottom: 13px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #065f46; margin-bottom: 5px;">
+            ${isHi ? '2. कृषि-जलवायु एवं मौसमी पैरामीटर' : '2. Agro-Climatic & Environmental Parameters'}
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 22%;">${isHi ? 'औसत तापमान' : 'Average Temperature'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 28%;">${data.temperature} °C</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 22%;">${isHi ? 'कुल मौसमी वर्षा' : 'Total Seasonal Rainfall'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 28%;">${data.rainfall} mm</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'सापेक्ष आर्द्रता' : 'Relative Humidity'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${data.humidity} %</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'अत्यधिक गर्मी के दिन' : 'Extreme Heat Days (>35°C)'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">${data.extreme_heat_days} ${isHi ? 'दिन' : 'Days'}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="margin-bottom: 13px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #065f46; margin-bottom: 5px;">
+            ${isHi ? '3. मशीन लर्निंग उपज एवं आपूर्ति पूर्वानुमान' : '3. Machine Learning Yield & Supply Forecast'}
+          </div>
+          <div style="display: table; width: 100%; table-layout: fixed;">
+            <div style="display: table-cell; padding-right: 6px; width: 25%;">
+              <div style="border: 1px solid #10b981; background: #ecfdf5; border-radius: 6px; padding: 8px 6px; text-align: center;">
+                <div style="font-size: 8.5px; font-weight: 700; color: #047857; ${isHi ? 'text-transform: none;' : 'text-transform: uppercase;'}">${isHi ? 'अनुमानित उपज' : 'PREDICTED YIELD'}</div>
+                <div style="font-size: 17px; font-weight: 800; color: #065f46; margin: 3px 0 1px 0;">${Number(data.predicted_yield_per_ha).toFixed(3)}</div>
+                <div style="font-size: 8.5px; color: #047857;">${isHi ? 'टन / हेक्टेयर' : 'Tons / Hectare'}</div>
+              </div>
+            </div>
+            <div style="display: table-cell; padding-right: 6px; width: 25%;">
+              <div style="border: 1px solid #10b981; background: #ecfdf5; border-radius: 6px; padding: 8px 6px; text-align: center;">
+                <div style="font-size: 8.5px; font-weight: 700; color: #047857; ${isHi ? 'text-transform: none;' : 'text-transform: uppercase;'}">${isHi ? 'कुल उत्पादन' : 'TOTAL PRODUCTION'}</div>
+                <div style="font-size: 17px; font-weight: 800; color: #065f46; margin: 3px 0 1px 0;">${Number(data.predicted_production_tons).toLocaleString()}</div>
+                <div style="font-size: 8.5px; color: #047857;">${isHi ? 'टन' : 'Tons'}</div>
+              </div>
+            </div>
+            <div style="display: table-cell; padding-right: 6px; width: 25%;">
+              <div style="border: 1px solid #10b981; background: #ecfdf5; border-radius: 6px; padding: 8px 6px; text-align: center;">
+                <div style="font-size: 8.5px; font-weight: 700; color: #047857; ${isHi ? 'text-transform: none;' : 'text-transform: uppercase;'}">${isHi ? 'जिला बेंचमार्क' : 'DISTRICT BENCHMARK'}</div>
+                <div style="font-size: 17px; font-weight: 800; color: #065f46; margin: 3px 0 1px 0;">${data.historical_avg_yield_per_ha !== null ? Number(data.historical_avg_yield_per_ha).toFixed(3) : 'N/A'}</div>
+                <div style="font-size: 8.5px; color: #047857;">${isHi ? 'टन / हेक्टेयर' : 'Tons / Hectare'}</div>
+              </div>
+            </div>
+            <div style="display: table-cell; width: 25%;">
+              <div style="border: 1px solid ${statusBorder}; background: ${statusBg}; border-radius: 6px; padding: 8px 6px; text-align: center;">
+                <div style="font-size: 8.5px; font-weight: 700; color: ${statusTextCol}; ${isHi ? 'text-transform: none;' : 'text-transform: uppercase;'}">${isHi ? 'क्षेत्रीय आपूर्ति स्थिति' : 'AVAILABILITY'}</div>
+                <div style="font-size: 15px; font-weight: 800; color: ${statusTextCol}; margin: 4px 0 1px 0;">${statusDisplay}</div>
+                <div style="font-size: 8.5px; color: ${statusTextCol}; font-weight: 600;">${data.percent_difference > 0 ? '+' : ''}${Number(data.percent_difference).toFixed(1)}% vs. avg</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 13px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #065f46; margin-bottom: 5px;">
+            ${isHi ? '4. वित्तीय एवं बाजार लाभप्रदता विश्लेषण' : '4. Financial & Market Profitability Analysis'}
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 25%;">${isHi ? 'अनुमानित मंडी / एमएसपी मूल्य' : 'Estimated Mandi / MSP Price'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 25%;">Rs. ${Number(priceQtl).toLocaleString()} / ${isHi ? 'क्विंटल' : 'Quintal'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700; width: 25%;">${isHi ? 'कुल अनुमानित खेती लागत' : 'Total Cultivation Cost'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; width: 25%;">Rs. ${Number(totalCost).toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'अनुमानित सकल राजस्व' : 'Estimated Gross Revenue'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0;">Rs. ${Number(grossRev).toLocaleString()}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'अनुमानित शुद्ध लाभ' : 'Estimated Net Profit'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; font-weight: 800; color: #065f46;">Rs. ${Number(netProfit).toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'निवेश पर प्रतिफल (ROI)' : 'Return on Investment (ROI)'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; font-weight: 700; color: #b45309;">${roi}%</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 700;">${isHi ? 'प्रति हेक्टेयर शुद्ध लाभ' : 'Net Profit per Hectare'}</td>
+              <td style="padding: 5px 9px; border: 1px solid #e2e8f0; font-weight: 700;">Rs. ${(netProfit / data.area_hectare).toLocaleString(undefined, {maximumFractionDigits:0})} / ha</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #065f46; margin-bottom: 5px;">
+            ${isHi ? '5. एआई कृषि परामर्श एवं परिचालन मार्गदर्शन' : '5. AI Farm Advisory & Operational Guidance'}
+          </div>
+          <div style="border: 1px solid #86efac; background: #f0fdf4; border-radius: 6px; padding: 9px 12px; font-size: 10px; line-height: 1.5; color: #1f2937;">
+            ${advisoryText}
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid #cbd5e1; padding-top: 7px; text-align: center; font-size: 9px; color: #6b7280;">
+          ${isHi ? 'एग्रीप्रेडिक्ट — स्मार्ट कृषि निर्णय समर्थन प्रणाली' : 'AgriPredict — Agricultural Intelligence & Decision Support System'}
+        </div>
+      `;
+
+      wrapper.appendChild(container);
+      document.body.appendChild(wrapper);
+      try {
+        const opt = {
+          margin: [8, 8, 8, 8],
+          filename: `${data.crop}_Prediction_Report_${lang.toUpperCase()}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: false, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        await window.html2pdf().set(opt).from(container).save();
+        return;
+      } finally {
+        if (wrapper.parentNode) {
+          wrapper.parentNode.removeChild(wrapper);
+        }
+      }
+    }
+
+    // Method 2: jsPDF Fallback
+    if (window.jspdf && window.jspdf.jsPDF) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(6, 95, 70);
+      doc.text(isHi ? 'AGRIPREDICT — CROP REPORT' : 'AGRIPREDICT — SMART CROP YIELD & MARKET FORECASTING', 14, 18);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(4, 120, 87);
+      doc.text(isHi ? 'Agricultural Decision Support Report' : 'Agricultural Decision Support & Comprehensive Prediction Report', 14, 23);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`Generated: ${dateStr}`, 14, 28);
+      doc.setDrawColor(16, 185, 129);
+      doc.setLineWidth(0.6);
+      doc.line(14, 31, 196, 31);
+
+      doc.autoTable({
+        startY: 35,
+        head: [['Farm Parameter', 'Value', 'Metric', 'Value']],
+        body: [
+          ['Target Crop', data.crop, 'Cropping Season', data.season],
+          ['State', data.state, 'District', data.district],
+          ['Predicted Yield', `${Number(data.predicted_yield_per_ha).toFixed(3)} T/ha`, 'Availability Status', data.availability_status.toUpperCase()],
+          ['Total Production', `${Number(data.predicted_production_tons).toLocaleString()} Tons`, 'Net Profit', `Rs. ${Number(netProfit).toLocaleString()}`]
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [6, 95, 70], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+        bodyStyles: { fontSize: 8.5, textColor: [31, 41, 55] },
+        margin: { left: 14, right: 14 }
+      });
+
+      const finalY = doc.lastAutoTable.finalY + 8;
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.4);
+      doc.line(14, finalY, 196, finalY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text('AgriPredict — Agricultural Intelligence & Decision Support System', 14, finalY + 4);
+
+      doc.save(`${data.crop}_Prediction_Report.pdf`);
+      return;
+    }
+
+    throw new Error('No PDF generator available');
+  }
+
+  // Export PDF Handler
+  const btnExportPdf = document.getElementById('btn-export-pdf') || document.getElementById('btn-export-csv');
+  if (btnExportPdf) {
+    btnExportPdf.addEventListener('click', async () => {
+      const crop = selectCrop.value || 'Crop';
+      const yieldVal = parseFloat(resYield?.textContent) || 0;
+      const prodText = resProduction?.textContent || '0';
+      const netProfitEl = document.getElementById('res-net-profit');
+      const netProfit = netProfitEl ? parseFloat(netProfitEl.textContent.replace(/[^0-9.-]+/g, '')) || 0 : 0;
+      const histBenchmarkEl = document.getElementById('res-benchmark');
+      const histBenchmark = histBenchmarkEl ? parseFloat(histBenchmarkEl.textContent) || null : null;
+      const diffSummaryEl = document.getElementById('res-diff-summary');
+      const diffText = diffSummaryEl ? diffSummaryEl.textContent : '';
+      let pctDiff = 0;
+      const matchDiff = diffText.match(/([-+]?[0-9]*\.?[0-9]+)%/);
+      if (matchDiff) pctDiff = parseFloat(matchDiff[1]);
+
+      const availBadge = document.querySelector('.badge-status');
+      const availStatus = availBadge ? availBadge.textContent.trim() : 'Normal';
+
+      const inputTemp = document.getElementById('input-temp');
+      const inputRain = document.getElementById('input-rain');
+      const inputHum = document.getElementById('input-hum');
+      const inputHeat = document.getElementById('input-heat');
+      const areaVal = parseFloat(inputArea?.value) || 100.0;
+      const activeLanguage = currentLang || 'en';
+
+      const payload = {
+        crop: crop,
+        state: selectState.value || 'Punjab',
+        district: selectDistrict.value || 'Ludhiana',
+        season: selectSeason.value || 'Rabi',
+        crop_year: parseInt(inputYear?.value) || 2025,
+        area_hectare: areaVal,
+        temperature: inputTemp ? parseFloat(inputTemp.value) : 21.0,
+        rainfall: inputRain ? parseFloat(inputRain.value) : 120.0,
+        humidity: inputHum ? parseFloat(inputHum.value) : 62.0,
+        extreme_heat_days: inputHeat ? parseInt(inputHeat.value) : 1,
+        predicted_yield_per_ha: yieldVal > 0 ? yieldVal : 4.0,
+        predicted_production_tons: parseFloat(prodText.replace(/[^0-9.-]+/g, '')) || (yieldVal > 0 ? yieldVal * areaVal : 4.0 * areaVal),
+        historical_avg_yield_per_ha: histBenchmark,
+        percent_difference: pctDiff,
+        availability_status: availStatus,
+        net_profit_rs: netProfit,
+        gross_revenue_rs: (yieldVal > 0 ? yieldVal : 4.0) * 10 * 2125 * areaVal,
+        total_cost_rs: 40000 * areaVal,
+        lang: activeLanguage
+      };
+
+      const originalHtml = btnExportPdf.innerHTML;
+      btnExportPdf.disabled = true;
+      btnExportPdf.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating PDF...';
+
+      try {
+        // 1. Try client-side generation first with current active language
+        await generateClientPdf(payload, activeLanguage);
+        return;
+      } catch (clientErr) {
+        console.warn('Client PDF generation error, trying server API:', clientErr);
+
+        // 2. Fallback to server API
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/export-pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.ok) {
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `${crop}_Prediction_Report_${activeLanguage.toUpperCase()}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            return;
+          }
+        } catch (serverErr) {
+          console.error('Server PDF fetch error:', serverErr);
+        }
+
+        alert(activeLanguage === 'hi'
+          ? 'पीडीएफ डाउनलोड करने के लिए कृपया पृष्ठ को रीफ्रेश (F5) करें।'
+          : 'Please refresh the page (F5) to download the PDF report.');
+      } finally {
+        btnExportPdf.disabled = false;
+        btnExportPdf.innerHTML = originalHtml;
+      }
     });
   }
 

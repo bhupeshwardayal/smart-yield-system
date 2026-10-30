@@ -23,7 +23,7 @@ try:
 except ImportError:
     mysql = None
     class Error(Exception): pass
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
 # ============================================================
@@ -326,7 +326,11 @@ def predict_yield():
     Predicts yield (tons/hectare) and estimated production.
     Automatically uses V2 model if available.
     """
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) if request.is_json or request.data else {}
+    if "crop_year" not in data and "year" in data:
+        data["crop_year"] = data["year"]
+    if "area_hectare" not in data and "area" in data:
+        data["area_hectare"] = data["area"]
     required = ["crop", "state", "district", "season", "crop_year", "area_hectare"]
     missing = [f for f in required if f not in data]
     if missing:
@@ -908,6 +912,415 @@ def profit_calculator():
     })
 
 
+from io import BytesIO
+import datetime
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
+
+def generate_crop_pdf(data):
+    lang = str(data.get("lang", "en")).lower().strip()
+    is_hi = (lang == "hi")
+
+    if not HAS_REPORTLAB:
+        buf = BytesIO()
+        buf.write(b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R>>endobj xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000056 00000 n \n0000000111 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n180\n%%EOF")
+        buf.seek(0)
+        return buf.getvalue()
+
+    # Font setup
+    font_reg = 'Helvetica'
+    font_bold = 'Helvetica-Bold'
+
+    if is_hi:
+        try:
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            nirmala_path = 'C:\\Windows\\Fonts\\Nirmala.ttf'
+            nirmala_b_path = 'C:\\Windows\\Fonts\\NirmalaB.ttf'
+            if os.path.exists(nirmala_path) and os.path.exists(nirmala_b_path):
+                pdfmetrics.registerFont(TTFont('Nirmala', nirmala_path))
+                pdfmetrics.registerFont(TTFont('Nirmala-Bold', nirmala_b_path))
+                font_reg = 'Nirmala'
+                font_bold = 'Nirmala-Bold'
+        except Exception:
+            pass
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
+    )
+
+    styles = getSampleStyleSheet()
+    header_style = ParagraphStyle(
+        'HeaderTitle',
+        parent=styles['Normal'],
+        fontName=font_bold,
+        fontSize=16,
+        leading=20,
+        textColor=colors.HexColor('#065f46')
+    )
+    subtitle_style = ParagraphStyle(
+        'HeaderSubtitle',
+        parent=styles['Normal'],
+        fontName=font_reg,
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#047857')
+    )
+    meta_style = ParagraphStyle(
+        'MetaStyle',
+        parent=styles['Normal'],
+        fontName=font_reg,
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor('#6b7280')
+    )
+    section_heading = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Normal'],
+        fontName=font_bold,
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor('#1f2937'),
+        spaceBefore=6,
+        spaceAfter=4
+    )
+    cell_bold = ParagraphStyle(
+        'CellBold',
+        parent=styles['Normal'],
+        fontName=font_bold,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor('#1f2937')
+    )
+    cell_normal = ParagraphStyle(
+        'CellNormal',
+        parent=styles['Normal'],
+        fontName=font_reg,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor('#374151')
+    )
+    stat_label = ParagraphStyle(
+        'StatLabel',
+        parent=styles['Normal'],
+        fontName=font_bold,
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#4b5563'),
+        alignment=1
+    )
+    stat_val = ParagraphStyle(
+        'StatVal',
+        parent=styles['Normal'],
+        fontName=font_bold,
+        fontSize=13,
+        leading=15,
+        textColor=colors.HexColor('#065f46'),
+        alignment=1
+    )
+
+    story = []
+    title_text = "एग्रीप्रेडिक्ट — स्मार्ट फसल उपज एवं बाजार मूल्य पूर्वानुमान" if is_hi else "AGRIPREDICT — SMART CROP YIELD & MARKET FORECASTING"
+    subtitle_text = "कृषि निर्णय समर्थन एवं व्यापक पूर्वानुमान रिपोर्ट" if is_hi else "Agricultural Decision Support & Comprehensive Prediction Report"
+    story.append(Paragraph(title_text, header_style))
+    story.append(Paragraph(subtitle_text, subtitle_style))
+
+    now_str = datetime.datetime.now().strftime("%d %B %Y, %I:%M %p")
+    date_lbl = "रिपोर्ट निर्माण तिथि:" if is_hi else "Generated On:"
+    sys_lbl = "स्मार्ट कृषि निर्णय समर्थन प्रणाली" if is_hi else "Smart Crop Yield & Price Prediction System"
+    story.append(Paragraph(f"{date_lbl} {now_str} &nbsp;|&nbsp; {sys_lbl}", meta_style))
+    story.append(Spacer(1, 4))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#10b981'), spaceAfter=6))
+
+    crop = str(data.get("crop", "Wheat"))
+    state = str(data.get("state", "Punjab"))
+    district = str(data.get("district", "Ludhiana"))
+    season = str(data.get("season", "Rabi"))
+    crop_year = data.get("crop_year", 2025)
+    try:
+        area = float(data.get("area_hectare", 100.0))
+    except (ValueError, TypeError):
+        area = 100.0
+
+    # Section 1
+    sec1_title = "1. कृषि एवं क्षेत्रीय जानकारी" if is_hi else "1. Farm & Regional Information"
+    story.append(Paragraph(sec1_title, section_heading))
+    lbl_crop = "लक्षित फसल:" if is_hi else "Target Crop:"
+    lbl_state = "राज्य / केंद्र शासित प्रदेश:" if is_hi else "State / UT:"
+    lbl_district = "जिला / स्थान:" if is_hi else "District:"
+    lbl_season = "फसल मौसम:" if is_hi else "Cropping Season:"
+    lbl_year = "फसल वर्ष:" if is_hi else "Harvest Year:"
+    lbl_area = "खेती क्षेत्र:" if is_hi else "Farm Area:"
+    area_unit = f"{area:,.1f} हेक्टेयर (~{area*2.471:,.1f} एकड़)" if is_hi else f"{area:,.1f} Hectares (~{area*2.471:,.1f} Acres)"
+
+    farm_info_data = [
+        [Paragraph(lbl_crop, cell_bold), Paragraph(crop, cell_normal),
+         Paragraph(lbl_state, cell_bold), Paragraph(state, cell_normal)],
+        [Paragraph(lbl_district, cell_bold), Paragraph(district, cell_normal),
+         Paragraph(lbl_season, cell_bold), Paragraph(season, cell_normal)],
+        [Paragraph(lbl_year, cell_bold), Paragraph(str(crop_year), cell_normal),
+         Paragraph(lbl_area, cell_bold), Paragraph(area_unit, cell_normal)],
+    ]
+    t1 = Table(farm_info_data, colWidths=[110, 150, 110, 150])
+    t1.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#f1f5f9')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t1)
+    story.append(Spacer(1, 5))
+
+    # Section 2
+    sec2_title = "2. कृषि-जलवायु एवं मौसमी पैरामीटर" if is_hi else "2. Agro-Climatic & Environmental Parameters"
+    story.append(Paragraph(sec2_title, section_heading))
+    lbl_temp = "औसत तापमान:" if is_hi else "Average Temperature:"
+    lbl_rain = "कुल वर्षा:" if is_hi else "Seasonal Rainfall:"
+    lbl_hum = "सापेक्ष आर्द्रता:" if is_hi else "Relative Humidity:"
+    lbl_heat = "अत्यधिक गर्मी के दिन:" if is_hi else "Extreme Heat Days:"
+    heat_days_unit = f"{data.get('extreme_heat_days', 1)} दिन (>35°C)" if is_hi else f"{data.get('extreme_heat_days', 1)} days (>35°C)"
+
+    weather_data = [
+        [Paragraph(lbl_temp, cell_bold), Paragraph(f"{data.get('temperature', 21.0)} °C", cell_normal),
+         Paragraph(lbl_rain, cell_bold), Paragraph(f"{data.get('rainfall', 120.0)} mm", cell_normal)],
+        [Paragraph(lbl_hum, cell_bold), Paragraph(f"{data.get('humidity', 62.0)} %", cell_normal),
+         Paragraph(lbl_heat, cell_bold), Paragraph(heat_days_unit, cell_normal)],
+    ]
+    t2 = Table(weather_data, colWidths=[110, 150, 110, 150])
+    t2.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#f1f5f9')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t2)
+    story.append(Spacer(1, 6))
+
+    # Section 3
+    sec3_title = "3. मशीन लर्निंग उपज एवं आपूर्ति पूर्वानुमान" if is_hi else "3. Machine Learning Yield & Supply Forecast"
+    story.append(Paragraph(sec3_title, section_heading))
+    try:
+        pred_yield = float(data.get("predicted_yield_per_ha", 4.0))
+    except (ValueError, TypeError):
+        pred_yield = 4.0
+    try:
+        total_prod = float(data.get("predicted_production_tons", pred_yield * area))
+    except (ValueError, TypeError):
+        total_prod = pred_yield * area
+
+    hist_avg = data.get("historical_avg_yield_per_ha")
+    try:
+        pct_diff = float(data.get("percent_difference", 0.0))
+    except (ValueError, TypeError):
+        pct_diff = 0.0
+
+    avail_status = str(data.get("availability_status", "Normal")).strip()
+    status_color = '#10b981' if avail_status.lower() == 'surplus' else '#f59e0b' if avail_status.lower() == 'normal' else '#ef4444'
+
+    lbl_card_yield = "अनुमानित उपज" if is_hi else "PREDICTED YIELD"
+    lbl_card_prod = "कुल खेत उत्पादन" if is_hi else "TOTAL PRODUCTION"
+    lbl_card_bench = "जिला बेंचमार्क" if is_hi else "HISTORICAL BENCHMARK"
+    lbl_card_status = "क्षेत्रीय आपूर्ति स्थिति" if is_hi else "REGIONAL AVAILABILITY"
+
+    yield_unit_str = "टन / हे." if is_hi else "T/ha"
+    prod_unit_str = "टन" if is_hi else "Tons"
+    status_trans = "अधिशेष (SURPLUS)" if avail_status.lower() == 'surplus' else "सामान्य (NORMAL)" if avail_status.lower() == 'normal' else "कमी (SHORTAGE)"
+    display_status = status_trans if is_hi else avail_status.upper()
+
+    hist_text = f"{float(hist_avg):.3f} <font size=8>{yield_unit_str}</font>" if hist_avg is not None else "N/A"
+
+    stat_cards_data = [
+        [
+            Paragraph(lbl_card_yield, stat_label),
+            Paragraph(lbl_card_prod, stat_label),
+            Paragraph(lbl_card_bench, stat_label),
+            Paragraph(lbl_card_status, stat_label),
+        ],
+        [
+            Paragraph(f"{pred_yield:.3f} <font size=8>{yield_unit_str}</font>", stat_val),
+            Paragraph(f"{total_prod:,.1f} <font size=8>{prod_unit_str}</font>", stat_val),
+            Paragraph(hist_text, stat_val),
+            Paragraph(f"<font color='{status_color}'>{display_status}</font>", stat_val),
+        ]
+    ]
+    t3 = Table(stat_cards_data, colWidths=[130, 130, 130, 130])
+    t3.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#ecfdf5')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#10b981')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#a7f3d0')),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    story.append(t3)
+    story.append(Spacer(1, 6))
+
+    # Section 4
+    sec4_title = "4. वित्तीय एवं बाजार लाभप्रदता विश्लेषण" if is_hi else "4. Financial & Market Profitability Analysis"
+    story.append(Paragraph(sec4_title, section_heading))
+    try:
+        price_qtl = float(data.get("price_per_qtl", 2125.0))
+    except (ValueError, TypeError):
+        price_qtl = 2125.0
+    try:
+        gross_rev = float(data.get("gross_revenue_rs", pred_yield * 10 * price_qtl * area))
+    except (ValueError, TypeError):
+        gross_rev = pred_yield * 10 * price_qtl * area
+    try:
+        total_cost = float(data.get("total_cost_rs", 40000.0 * area))
+    except (ValueError, TypeError):
+        total_cost = 40000.0 * area
+    try:
+        net_profit = float(data.get("net_profit_rs", gross_rev - total_cost))
+    except (ValueError, TypeError):
+        net_profit = gross_rev - total_cost
+    try:
+        roi = float(data.get("roi_percent", round((net_profit / total_cost) * 100, 1) if total_cost > 0 else 0.0))
+    except (ValueError, TypeError):
+        roi = 0.0
+
+    lbl_price = "अनुमानित मंडी / एमएसपी मूल्य:" if is_hi else "Estimated Mandi / MSP Price:"
+    lbl_cost = "कुल अनुमानित खेती लागत:" if is_hi else "Total Estimated Cost:"
+    lbl_rev = "अनुमानित सकल राजस्व:" if is_hi else "Estimated Gross Revenue:"
+    lbl_net = "अनुमानित शुद्ध लाभ:" if is_hi else "Estimated Net Profit:"
+    lbl_roi = "निवेश पर प्रतिफल (ROI):" if is_hi else "Return on Investment (ROI):"
+    lbl_var = "बेंचमार्क से उपज अंतर:" if is_hi else "Yield Variance from Benchmark:"
+    per_qtl_str = "/ क्विंटल" if is_hi else "/ Quintal"
+
+    fin_table_data = [
+        [Paragraph(lbl_price, cell_bold), Paragraph(f"Rs. {price_qtl:,.2f} {per_qtl_str}", cell_normal),
+         Paragraph(lbl_cost, cell_bold), Paragraph(f"Rs. {total_cost:,.2f}", cell_normal)],
+        [Paragraph(lbl_rev, cell_bold), Paragraph(f"Rs. {gross_rev:,.2f}", cell_normal),
+         Paragraph(lbl_net, cell_bold), Paragraph(f"<b>Rs. {net_profit:,.2f}</b>", cell_bold)],
+        [Paragraph(lbl_roi, cell_bold), Paragraph(f"<b>{roi:+.1f} %</b>", cell_bold),
+         Paragraph(lbl_var, cell_bold), Paragraph(f"{pct_diff:+.1f} %", cell_normal)],
+    ]
+    t4 = Table(fin_table_data, colWidths=[130, 130, 130, 130])
+    t4.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t4)
+    story.append(Spacer(1, 6))
+
+    # Section 5
+    sec5_title = "5. एआई कृषि परामर्श एवं परिचालन मार्गदर्शन" if is_hi else "5. AI Farm Advisory & Operational Guidance"
+    story.append(Paragraph(sec5_title, section_heading))
+    if avail_status.lower() == "shortage":
+        advisory_text = (
+            "<b>बाजार चेतावनी:</b> क्षेत्रीय उपज ऐतिहासिक औसत से कम रहने का अनुमान है। स्थानीय मंडी कीमतें बढ़ने की संभावना है। "
+            "किसानों को सिंचाई प्रबंधन बनाए रखने, अनुशंसित सूक्ष्म पोषक तत्वों का उपयोग करने और बेहतर कीमतों के लिए चरणबद्ध बिक्री की सलाह दी जाती है।"
+            if is_hi else
+            "<b>Market Warning:</b> Regional yield is projected below historical averages. "
+            "Local mandi prices are likely to rise due to supply tightening. Farmers are advised to "
+            "ensure proper irrigation scheduling during critical crop growth stages, apply recommended "
+            "micronutrients, and consider staggered market arrivals to capture peak prices."
+        )
+    elif avail_status.lower() == "surplus":
+        advisory_text = (
+            "<b>बाजार अवसर:</b> ऐतिहासिक बेंचमार्क से अधिक मजबूत उत्पादन का अनुमान है। आवक अधिक होने पर कटाई के समय कीमतों में अस्थायी नरमी आ सकती है। "
+            "संकटपूर्ण बिक्री से बचने के लिए किसानों को प्रमाणित गोदाम भंडारण (WDRA) या ई-एनडब्ल्यूआर का उपयोग करने की सलाह दी जाती है।"
+            if is_hi else
+            "<b>Market Opportunity:</b> Robust yield output projected above historical benchmarks. "
+            "High regional production may exert temporary downward price pressure during peak harvest arrivals. "
+            "Farmers are advised to explore certified warehouse storage (WDRA facilities) or electronic negotiable "
+            "warehouse receipts (e-NWR) to avoid distress sales and capture post-harvest price rebounds."
+        )
+    else:
+        advisory_text = (
+            "<b>स्थिर दृष्टिकोण:</b> फसल उत्पादन क्षेत्रीय सामान्य बेंचमार्क के अनुरूप है। नियमित कृषि पद्धतियों और समय पर कटाई की सिफारिश की जाती है। "
+            "साप्ताहिक एपीएमसी मंडी दरों पर नजर रखें और यदि खुले बाजार दरें कम हों तो सरकारी एमएसपी खरीद का लाभ उठाएं।"
+            if is_hi else
+            "<b>Stable Outlook:</b> Crop production is on track with regional normal benchmarks. "
+            "Regular agronomic practices and timely harvest are recommended. Monitor weekly APMC mandi prices "
+            "and utilize government MSP procurement portals if open market rates dip below baseline benchmarks."
+        )
+
+    advisory_style = ParagraphStyle(
+        'AdvisoryStyle',
+        parent=styles['Normal'],
+        fontName=font_reg,
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor('#1f2937')
+    )
+    t_advisory = Table([[Paragraph(advisory_text, advisory_style)]], colWidths=[520])
+    t_advisory.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f0fdf4')),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#86efac')),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING', (0,0), (-1,-1), 7),
+        ('RIGHTPADDING', (0,0), (-1,-1), 7),
+    ]))
+    story.append(t_advisory)
+    story.append(Spacer(1, 8))
+
+    # Clean Footer (Attribution Line REMOVED completely)
+    footer_text = (
+        "<b>एग्रीप्रेडिक्ट</b> &nbsp;|&nbsp; स्मार्ट कृषि निर्णय समर्थन एवं बाजार पूर्वानुमान प्रणाली"
+        if is_hi else
+        "<b>AgriPredict</b> &nbsp;|&nbsp; Agricultural Intelligence & Decision Support System"
+    )
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cbd5e1'), spaceAfter=3))
+    story.append(Paragraph(footer_text, ParagraphStyle('Footer', parent=meta_style, alignment=1)))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@app.route("/api/export-pdf", methods=["POST", "GET"])
+def export_pdf():
+    """
+    Generates and downloads a formatted PDF prediction report.
+    Accepts JSON body via POST, or query params via GET.
+    """
+    if request.method == "POST":
+        data = request.get_json(force=True) if request.is_json or request.data else {}
+    else:
+        data = request.args.to_dict()
+
+    crop = data.get("crop", "Crop").strip()
+    filename = f"{crop}_Prediction_Report.pdf"
+
+    try:
+        pdf_bytes = generate_crop_pdf(data)
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate PDF: {str(e)}"}), 500
+
+
 @app.route("/", methods=["GET"])
 def index():
     return app.send_static_file("index.html")
@@ -924,6 +1337,7 @@ def health_check():
             "POST /api/predict-yield",
             "GET  /api/price-trend?crop=<crop>&district=<district>",
             "POST /api/availability",
+            "POST /api/export-pdf"
         ]
     })
 
@@ -931,3 +1345,4 @@ def health_check():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
