@@ -15,3 +15,5 @@ AI-Powered Crop Yield Prediction and Mandi Price Forecasting System for Indian A
 - **Supported Crops**: 76 Indian crops across 36 States and Union Territories
 - **Frontend**: Glassmorphism UI with dual English/Hindi language toggle and Chart.js integration
 - **Backend**: Python Flask REST API with Scikit-Learn
+
+- https://smart-yield-system.onrender.com
